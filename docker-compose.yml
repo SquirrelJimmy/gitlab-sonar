@@ -1,0 +1,102 @@
+version: "3.3"
+services:
+  sever:
+    image: nginx:latest
+    container_name: sever
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/log:/var/log/nginx
+      # - ./nginx/letsencrypt:/etc/letsencrypt
+      - ./nginx/cert:/etc/nginx/cert
+    depends_on:
+      - sonarqube
+      - gitlab
+    networks:
+      - gitlab-sonar-network
+
+  postgresDB:
+    image: postgres
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=sonar
+      - POSTGRES_PASSWORD=sonar
+      - POSTGRES_DB=sonar
+    volumes:
+      - postgresDB:/var/lib/postgres
+    networks:
+      - gitlab-sonar-network
+
+  sonarqube:
+    build: .
+    container_name: sonarqube
+    ports:
+        - "9000:9000"
+        - "9092:9092"
+    volumes:
+      - sonarqube:/var/lib/sonarqube
+    depends_on:
+      - postgresDB
+    links:
+      - postgresDB
+    environment:
+      - sonar.jdbc.url=jdbc:postgresql://postgresDB:5432/sonar
+      - sonar.jdbc.username=sonar
+      - sonar.jdbc.password=sonar
+    networks:
+      - gitlab-sonar-network
+  gitlab:
+    image: 'gitlab/gitlab-ce:12.0.2-ce.0'
+    restart: unless-stopped
+    # hostname: 'gitlab-web'
+    container_name: gitlab
+    environment:
+      TZ: 'Asia/Shanghai'
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://192.168.0.192:9999'
+        gitlab_rails['time_zone'] = 'Asia/Shanghai'
+        # 需要配置到 gitlab.rb 中的配置可以在这里配置，每个配置一行，注意缩进。
+        # 比如下面的电子邮件的配置：
+        # gitlab_rails['smtp_enable'] = true
+        # gitlab_rails['smtp_address'] = "smtp.exmail.qq.com"
+        # gitlab_rails['smtp_port'] = 465
+        # gitlab_rails['smtp_user_name'] = "xxxx@xx.com"
+        # gitlab_rails['smtp_password'] = "password"
+        # gitlab_rails['smtp_authentication'] = "login"
+        # gitlab_rails['smtp_enable_starttls_auto'] = true
+        # gitlab_rails['smtp_tls'] = true
+        # gitlab_rails['gitlab_email_from'] = 'xxxx@xx.com'
+    ports:
+      - '9999:9999'
+    volumes:
+      - gitconfig:/etc/gitlab
+      - gitdata:/var/opt/gitlab
+      - gitlogs:/var/log/gitlab
+    networks:
+      - gitlab-sonar-network
+  runner:
+    build:
+      context: ./
+      dockerfile: Dockerfile-gitlab-runner
+    container_name: gitlab-runner
+    hostname: gitlab-runner
+    restart: always
+    volumes:
+      - runner-config:/etc/gitlab-runner
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - gitlab-sonar-network
+networks:
+  gitlab-sonar-network: ~
+
+volumes:
+  gitconfig: ~
+  gitdata: ~
+  gitlogs: ~
+  runner-config: ~
+  postgresDB: ~
+  sonarqube: ~

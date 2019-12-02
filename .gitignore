@@ -1,0 +1,6 @@
+*.log
+*.key
+*.pem
+.DS_Store
+Thumbs.db
+*.pass
